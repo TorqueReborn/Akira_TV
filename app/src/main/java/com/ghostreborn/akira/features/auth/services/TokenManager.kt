@@ -1,7 +1,10 @@
 package com.ghostreborn.akira.features.auth.services
 
 import android.content.Context
+import androidx.core.content.edit
 import android.content.SharedPreferences
+import android.util.Base64
+import org.json.JSONObject
 
 object TokenManager {
     private const val PREFS_NAME = "akira_auth_prefs"
@@ -14,6 +17,8 @@ object TokenManager {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_EMAIL = "email"
     private const val KEY_EMAIL_VERIFIED = "email_verified"
+    private const val KEY_ACCESS_TOKEN_EXPIRES_AT = "access_token_expires_at"
+    private const val DEFAULT_TOKEN_LIFETIME_MS = 9L * 60L * 60L * 1000L
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -41,12 +46,18 @@ object TokenManager {
         picture: String? = null,
         userId: String? = null,
         email: String? = null,
-        isEmailVerified: Boolean = false
+        isEmailVerified: Boolean = false,
+        tokenExpiresAtMs: Long? = null
     ) {
         val p = getPrefs(context)
-        p.edit().apply {
+        p.edit {
             putString(KEY_ACCESS_TOKEN, accessToken)
             putString(KEY_REFRESH_TOKEN, refreshToken)
+            putLong(
+                KEY_ACCESS_TOKEN_EXPIRES_AT,
+                tokenExpiresAtMs ?: parseJwtExpirationMs(accessToken)
+                    ?: (System.currentTimeMillis() + DEFAULT_TOKEN_LIFETIME_MS)
+            )
             putString(KEY_SESSION_ID, sessionId)
             putString(KEY_USERNAME, username)
             if (displayName != null) putString(KEY_DISPLAY_NAME, displayName) else remove(KEY_DISPLAY_NAME)
@@ -63,6 +74,28 @@ object TokenManager {
 
     fun getRefreshToken(context: Context? = null): String? =
         try { getPrefs(context).getString(KEY_REFRESH_TOKEN, null) } catch (_: Exception) { null }
+
+    fun getAccessTokenExpiresAt(context: Context? = null): Long =
+        try { getPrefs(context).getLong(KEY_ACCESS_TOKEN_EXPIRES_AT, 0L) } catch (_: Exception) { 0L }
+
+    fun isAccessTokenExpired(context: Context? = null, leewaySeconds: Long = 0L): Boolean {
+        val token = getAccessToken(context)
+        if (token.isNullOrBlank()) return true
+        val storedExpiry = getAccessTokenExpiresAt(context)
+        val expiresAt = if (storedExpiry > 0L) storedExpiry else parseJwtExpirationMs(token) ?: return false
+        return expiresAt <= System.currentTimeMillis() + leewaySeconds.coerceAtLeast(0L) * 1000L
+    }
+
+    fun isAccessTokenExpiringSoon(context: Context? = null, leewaySeconds: Long = 120L): Boolean {
+        val token = getAccessToken(context)
+        if (token.isNullOrBlank()) return true
+        val storedExpiry = getAccessTokenExpiresAt(context)
+        // If a pre-update install has no expiry metadata and the token is opaque, refresh it once
+        // when a refresh token is available instead of silently treating it as valid forever.
+        val expiresAt = if (storedExpiry > 0L) storedExpiry else parseJwtExpirationMs(token)
+        if (expiresAt == null) return !getRefreshToken(context).isNullOrBlank()
+        return expiresAt <= System.currentTimeMillis() + leewaySeconds.coerceAtLeast(0L) * 1000L
+    }
 
     fun getSessionId(context: Context? = null): String? =
         try { getPrefs(context).getString(KEY_SESSION_ID, null) } catch (_: Exception) { null }
@@ -85,12 +118,28 @@ object TokenManager {
     fun isEmailVerified(context: Context? = null): Boolean =
         try { getPrefs(context).getBoolean(KEY_EMAIL_VERIFIED, false) } catch (_: Exception) { false }
 
+    fun setEmailVerified(context: Context, verified: Boolean) {
+        getPrefs(context).edit { putBoolean(KEY_EMAIL_VERIFIED, verified) }
+    }
+
     fun isLoggedIn(context: Context? = null): Boolean {
-        val token = getAccessToken(context)
-        return !token.isNullOrBlank()
+        // A refresh token is enough to restore an expired access-token session.
+        return !getAccessToken(context).isNullOrBlank() || !getRefreshToken(context).isNullOrBlank()
+    }
+
+    private fun parseJwtExpirationMs(token: String): Long? {
+        return try {
+            val parts = token.split('.')
+            if (parts.size < 2) return null
+            val decoded = Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            val expSeconds = JSONObject(String(decoded, Charsets.UTF_8)).optLong("exp", 0L)
+            if (expSeconds > 0L) expSeconds * 1000L else null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun clear(context: Context) {
-        getPrefs(context).edit().clear().apply()
+        getPrefs(context).edit { clear() }
     }
 }

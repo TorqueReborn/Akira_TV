@@ -1,16 +1,17 @@
 package com.ghostreborn.akira.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Android TV interface uses Dark Theme by default for cinema-like experience
-private val AkiraTVDarkColorScheme = darkColorScheme(
+private val AkiraDarkColorScheme = darkColorScheme(
     primary = AkiraPrimaryLight,
     onPrimary = Color.White,
 
@@ -33,11 +34,35 @@ private val AkiraTVDarkColorScheme = darkColorScheme(
     outlineVariant = AkiraDarkSurfaceBorder
 )
 
+private val AkiraLightColorScheme = lightColorScheme(
+    primary = AkiraPrimary,
+    onPrimary = AkiraSurface,
+
+    primaryContainer = AkiraAccentBackground,
+    onPrimaryContainer = AkiraPrimaryDark,
+
+    secondary = AkiraPrimaryLight,
+    onSecondary = AkiraSurface,
+
+    background = AkiraBackground,
+    onBackground = AkiraTextPrimary,
+
+    surface = AkiraSurface,
+    onSurface = AkiraTextPrimary,
+
+    surfaceVariant = AkiraAccentBackground,
+    onSurfaceVariant = AkiraTextSecondary,
+
+    outline = AkiraSurfaceBorder,
+    outlineVariant = AkiraSurfaceBorder
+)
+
 @Composable
 fun AkiraTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = AkiraTVDarkColorScheme
+    val colorScheme = if (darkTheme) AkiraDarkColorScheme else AkiraLightColorScheme
     val view = LocalView.current
 
     if (!view.isInEditMode) {
@@ -45,8 +70,8 @@ fun AkiraTheme(
             val window = (view.context as? Activity)?.window
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = false
-                insetsController.isAppearanceLightNavigationBars = false
+                insetsController.isAppearanceLightStatusBars = !darkTheme
+                insetsController.isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }

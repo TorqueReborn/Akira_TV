@@ -96,7 +96,6 @@ fun AkiraTVFeaturedBanner(
             .shadow(if (isFocused) 20.dp else 6.dp, bannerShape, spotColor = if (isFocused) AkiraPrimary else Color.Black)
             .clip(bannerShape)
             .border(if (isFocused) 3.dp else 0.dp, borderColor, bannerShape)
-            .focusable(interactionSource = interactionSource)
             .clickable(interactionSource = interactionSource, indication = null) {
                 if (pagerState.currentPage < featuredShows.size) {
                     onTap(featuredShows[pagerState.currentPage])

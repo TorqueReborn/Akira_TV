@@ -97,7 +97,6 @@ fun TVSettingsScreen(
                         .clip(CircleShape)
                         .border(if (isBackFocused) 2.dp else 0.dp, if (isBackFocused) Color.White else Color.Transparent, CircleShape)
                         .background(Color.White.copy(alpha = 0.12f))
-                        .focusable(interactionSource = backInteraction)
                         .clickable(interactionSource = backInteraction, indication = null) {
                             onNavigateBack()
                         },
@@ -219,7 +218,6 @@ fun TVSettingsScreen(
                     .clip(RoundedCornerShape(14.dp))
                     .border(if (isLogoutFocused) 2.dp else 0.dp, if (isLogoutFocused) Color.White else Color.Transparent, RoundedCornerShape(14.dp))
                     .background(if (isLogoutFocused) Color.Red.copy(alpha = 0.8f) else Color.Red.copy(alpha = 0.2f))
-                    .focusable(interactionSource = logoutInteraction)
                     .clickable(interactionSource = logoutInteraction, indication = null) {
                         isLoggingOut = true
                         scope.launch {
@@ -263,7 +261,6 @@ fun TVSettingsToggle(
             .clip(RoundedCornerShape(14.dp))
             .border(if (isFocused) 2.dp else 0.dp, if (isFocused) Color.White else Color.Transparent, RoundedCornerShape(14.dp))
             .background(if (isFocused) Color.White.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
-            .focusable(interactionSource = interaction)
             .clickable(interactionSource = interaction, indication = null) {
                 onCheckedChange(!checked)
             }

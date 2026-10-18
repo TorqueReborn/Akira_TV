@@ -249,7 +249,6 @@ fun TVHomeScreen(
                                         shape = RoundedCornerShape(10.dp)
                                     )
                                     .then(buttonMod)
-                                    .focusable(interactionSource = interaction)
                                     .clickable(interactionSource = interaction, indication = null) {
                                         if (translationType != typeKey) {
                                             translationType = typeKey
@@ -277,7 +276,6 @@ fun TVHomeScreen(
                                 .clip(CircleShape)
                                 .border(if (isSearchFocused) 2.dp else 0.dp, if (isSearchFocused) Color.White else Color.Transparent, CircleShape)
                                 .then(searchMod)
-                                .focusable(interactionSource = searchInteraction)
                                 .clickable(interactionSource = searchInteraction, indication = null) {
                                     isSearchActive = !isSearchActive
                                     if (!isSearchActive) {
@@ -303,7 +301,6 @@ fun TVHomeScreen(
                                 .clip(CircleShape)
                                 .border(if (isSettingsFocused) 2.dp else 0.dp, if (isSettingsFocused) Color.White else Color.Transparent, CircleShape)
                                 .background(color = Color.White.copy(alpha = 0.12f))
-                                .focusable(interactionSource = settingsInteraction)
                                 .clickable(interactionSource = settingsInteraction, indication = null) {
                                     onNavigateToSettings()
                                 },
@@ -381,7 +378,6 @@ fun TVHomeScreen(
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .then(shelfMod)
-                                .focusable(interactionSource = interaction)
                                 .clickable(interactionSource = interaction, indication = null) {
                                     if (selectedCategoryIndex != index) {
                                         selectedCategoryIndex = index

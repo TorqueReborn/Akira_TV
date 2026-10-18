@@ -57,10 +57,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import androidx.compose.runtime.mutableIntStateOf
 import com.ghostreborn.akira.features.auth.services.TokenManager
-import com.ghostreborn.akira.features.auth.widgets.CloudflareVerificationDialog
 import com.ghostreborn.akira.features.home.models.AnimeDetail
 import com.ghostreborn.akira.features.home.services.AnimeRepository
-import com.ghostreborn.akira.features.home.services.CaptchaRequiredException
 import com.ghostreborn.akira.features.player.models.StreamSource
 import com.ghostreborn.akira.features.player.services.WatchHistoryManager
 import com.ghostreborn.akira.ui.components.AkiraTVButton
@@ -89,10 +87,6 @@ fun TVAnimeDetailScreen(
     var lastProgressMs by remember { mutableStateOf(0L) }
     var lastWatchedEp by remember { mutableStateOf<String?>(null) }
 
-    var pendingEpisodeString by remember { mutableStateOf<String?>(null) }
-    var showCaptchaDialog by remember { mutableStateOf(false) }
-    var captchaRetryCount by remember { mutableIntStateOf(0) }
-
     LaunchedEffect(animeId) {
         isLoading = true
         errorMessage = null
@@ -113,8 +107,8 @@ fun TVAnimeDetailScreen(
         }
     }
 
-    fun playEpisode(epNum: String, captchaToken: String? = null) {
-        if (loadingEpisodeString != null && captchaToken == null) return
+    fun playEpisode(epNum: String) {
+        if (loadingEpisodeString != null) return
         loadingEpisodeString = epNum
         scope.launch {
             try {
@@ -125,7 +119,6 @@ fun TVAnimeDetailScreen(
                     translationType = transType,
                     episodeString = epNum,
                     authToken = token,
-                    captchaToken = captchaToken,
                     context = context
                 )
                 val sources = fetchResult.streams
@@ -133,7 +126,6 @@ fun TVAnimeDetailScreen(
                 if (sources.isEmpty()) {
                     Toast.makeText(context, "No streaming servers found for Episode $epNum", Toast.LENGTH_SHORT).show()
                     loadingEpisodeString = null
-                    captchaRetryCount = 0
                     return@launch
                 }
 
@@ -145,20 +137,9 @@ fun TVAnimeDetailScreen(
 
                 val resumeMs = if (lastWatchedEp == epNum) lastProgressMs else 0L
                 loadingEpisodeString = null
-                captchaRetryCount = 0
                 onPlayEpisode(epNum, sources, resumeMs, epList, transType)
-            } catch (e: CaptchaRequiredException) {
-                if (captchaRetryCount < 1) {
-                    pendingEpisodeString = epNum
-                    showCaptchaDialog = true
-                } else {
-                    captchaRetryCount = 0
-                    loadingEpisodeString = null
-                    Toast.makeText(context, "Verification failed or expired. Please try again.", Toast.LENGTH_LONG).show()
-                }
             } catch (e: Exception) {
                 loadingEpisodeString = null
-                captchaRetryCount = 0
                 Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
             }
         }
@@ -213,7 +194,6 @@ fun TVAnimeDetailScreen(
                             .clip(CircleShape)
                             .border(if (isBackFocused) 2.dp else 0.dp, if (isBackFocused) Color.White else Color.Transparent, CircleShape)
                             .background(Color.White.copy(alpha = 0.12f))
-                            .focusable(interactionSource = backInteraction)
                             .clickable(interactionSource = backInteraction, indication = null) {
                                 onNavigateBack()
                             },
@@ -314,7 +294,6 @@ fun TVAnimeDetailScreen(
                                             shape = RoundedCornerShape(10.dp)
                                         )
                                         .then(tabBgMod)
-                                        .focusable(interactionSource = tabInteraction)
                                         .clickable(interactionSource = tabInteraction, indication = null) {
                                             selectedAudioTab = tab
                                         }
@@ -362,22 +341,7 @@ fun TVAnimeDetailScreen(
             }
         }
 
-        if (showCaptchaDialog) {
-            CloudflareVerificationDialog(
-                onTokenExtracted = { token ->
-                    showCaptchaDialog = false
-                    captchaRetryCount = 1
-                    val targetEp = pendingEpisodeString ?: "1"
-                    playEpisode(targetEp, captchaToken = token)
-                },
-                onDismiss = {
-                    showCaptchaDialog = false
-                    loadingEpisodeString = null
-                    captchaRetryCount = 0
-                    pendingEpisodeString = null
-                }
-            )
-        }
+
     }
 }
 
@@ -413,7 +377,6 @@ fun TVEpisodeChip(
                 shape = RoundedCornerShape(10.dp)
             )
             .then(chipBgMod)
-            .focusable(interactionSource = epInteraction)
             .clickable(interactionSource = epInteraction, indication = null) {
                 onClick()
             }

@@ -1,10 +1,16 @@
 package com.ghostreborn.akira.features.home.services
 
 import android.content.Context
+import androidx.core.content.edit
 import android.net.Uri
 import android.util.Log
+import com.ghostreborn.akira.core.config.MkissaClientConfig
 import com.ghostreborn.akira.core.config.MkissaConfigProvider
 import com.ghostreborn.akira.core.config.OperationRegistry
+import com.ghostreborn.akira.core.di.ServiceLocator
+import com.ghostreborn.akira.core.network.MkissaGraphQlTransport
+import com.ghostreborn.akira.features.auth.services.AuthRepository
+import com.ghostreborn.akira.features.auth.services.TokenManager
 import com.ghostreborn.akira.features.home.models.AnimeDetail
 import com.ghostreborn.akira.features.home.models.AnimePageResult
 import com.ghostreborn.akira.features.home.models.AnimeShow
@@ -28,77 +34,194 @@ data class EpisodeFetchResult(
     val bootstrapEpoch: Long
 )
 
-object AnimeRepository {
-    private const val TAG = "AnimeRepository"
+interface AnimeRepository {
+    var allowAdult: Boolean
+    var denyEcchi: Boolean
+    var allowUnknown: Boolean
 
-    val BASE_URL: String
-        get() = MkissaConfigProvider.currentEndpoints.apiBaseUrl
-
-    // Preferences
-    var allowAdult: Boolean = false
-    var denyEcchi: Boolean = false
-    var allowUnknown: Boolean = false
-
-    private const val PREFS_NAME = "akira_content_prefs"
-    private const val PREF_ALLOW_ADULT = "pref_allow_adult"
-    private const val PREF_DENY_ECCHI = "pref_deny_ecchi"
-    private const val PREF_ALLOW_UNKNOWN = "pref_allow_unknown"
-
-    fun loadContentPreferences(context: Context) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        allowAdult = prefs.getBoolean(PREF_ALLOW_ADULT, false)
-        denyEcchi = prefs.getBoolean(PREF_DENY_ECCHI, false)
-        allowUnknown = prefs.getBoolean(PREF_ALLOW_UNKNOWN, false)
-    }
-
+    fun loadContentPreferences(context: Context)
     fun updateContentPreferences(
         context: Context,
         newAllowAdult: Boolean? = null,
         newDenyEcchi: Boolean? = null,
         newAllowUnknown: Boolean? = null
-    ) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        newAllowAdult?.let {
-            allowAdult = it
-            editor.putBoolean(PREF_ALLOW_ADULT, it)
-        }
-        newDenyEcchi?.let {
-            denyEcchi = it
-            editor.putBoolean(PREF_DENY_ECCHI, it)
-        }
-        newAllowUnknown?.let {
-            allowUnknown = it
-            editor.putBoolean(PREF_ALLOW_UNKNOWN, it)
-        }
-        editor.apply()
-        clearCache()
+    )
+    fun clearCache()
+
+    suspend fun fetchAnimeList(
+        page: Int = 1,
+        limit: Int = 26,
+        translationType: String = "sub",
+        listProfile: String = "browse",
+        searchQuery: String? = null,
+        sortBy: String? = null,
+        countryOrigin: String? = null,
+        season: String? = null,
+        seasonYear: Int? = null,
+        context: Context? = null
+    ): AnimePageResult
+
+    suspend fun fetchTopRankedAnime(
+        dateRange: Int = 1,
+        size: Int = 15,
+        context: Context? = null
+    ): List<AnimeShow>
+
+    suspend fun fetchShowsByTag(
+        tagSlugOrName: String,
+        format: String = "anime",
+        page: Int = 1,
+        limit: Int = 26,
+        ranked: Boolean = true,
+        context: Context? = null
+    ): AnimePageResult
+
+    suspend fun fetchTags(
+        page: Int = 1,
+        limit: Int = 50,
+        searchQuery: String? = null,
+        context: Context? = null
+    ): List<com.ghostreborn.akira.features.home.models.TagItem>
+
+    suspend fun fetchRandomRecommendation(
+        format: String = "anime",
+        context: Context? = null
+    ): AnimeShow?
+
+    suspend fun fetchPopularMedia(
+        type: String = "anime",
+        size: Int = 26,
+        dateRange: Int = 30,
+        page: Int = 1,
+        context: Context? = null
+    ): List<AnimeShow>
+
+    suspend fun fetchAnimeDetail(
+        animeId: String,
+        context: Context? = null
+    ): AnimeDetail
+
+    fun getCachedAnimeDetail(animeId: String): AnimeDetail?
+
+    suspend fun fetchEpisodeStreams(
+        context: Context,
+        showId: String,
+        episodeString: String,
+        translationType: String = "sub",
+        authToken: String? = null
+    ): EpisodeFetchResult
+
+    companion object : AnimeRepository {
+        private val repo: AnimeRepository get() = ServiceLocator.animeRepository
+
+        override var allowAdult: Boolean
+            get() = repo.allowAdult
+            set(value) { repo.allowAdult = value }
+
+        override var denyEcchi: Boolean
+            get() = repo.denyEcchi
+            set(value) { repo.denyEcchi = value }
+
+        override var allowUnknown: Boolean
+            get() = repo.allowUnknown
+            set(value) { repo.allowUnknown = value }
+
+        override fun loadContentPreferences(context: Context) = repo.loadContentPreferences(context)
+        override fun updateContentPreferences(context: Context, newAllowAdult: Boolean?, newDenyEcchi: Boolean?, newAllowUnknown: Boolean?) = repo.updateContentPreferences(context, newAllowAdult, newDenyEcchi, newAllowUnknown)
+        override fun clearCache() = repo.clearCache()
+
+        override suspend fun fetchAnimeList(page: Int, limit: Int, translationType: String, listProfile: String, searchQuery: String?, sortBy: String?, countryOrigin: String?, season: String?, seasonYear: Int?, context: Context?) =
+            repo.fetchAnimeList(page, limit, translationType, listProfile, searchQuery, sortBy, countryOrigin, season, seasonYear, context)
+
+        override suspend fun fetchTopRankedAnime(dateRange: Int, size: Int, context: Context?) =
+            repo.fetchTopRankedAnime(dateRange, size, context)
+
+        override suspend fun fetchShowsByTag(tagSlugOrName: String, format: String, page: Int, limit: Int, ranked: Boolean, context: Context?) =
+            repo.fetchShowsByTag(tagSlugOrName, format, page, limit, ranked, context)
+
+        override suspend fun fetchTags(page: Int, limit: Int, searchQuery: String?, context: Context?) =
+            repo.fetchTags(page, limit, searchQuery, context)
+
+        override suspend fun fetchRandomRecommendation(format: String, context: Context?) =
+            repo.fetchRandomRecommendation(format, context)
+
+        override suspend fun fetchPopularMedia(type: String, size: Int, dateRange: Int, page: Int, context: Context?) =
+            repo.fetchPopularMedia(type, size, dateRange, page, context)
+
+        override suspend fun fetchAnimeDetail(animeId: String, context: Context?) =
+            repo.fetchAnimeDetail(animeId, context)
+
+        override fun getCachedAnimeDetail(animeId: String): AnimeDetail? =
+            repo.getCachedAnimeDetail(animeId)
+
+        override suspend fun fetchEpisodeStreams(context: Context, showId: String, episodeString: String, translationType: String, authToken: String?) =
+            repo.fetchEpisodeStreams(context, showId, episodeString, translationType, authToken)
     }
+}
 
-    // Dynamic persisted query hash getters with fallback
-    val BROWSE_PERSISTED_QUERY_HASH: String
-        get() = MkissaConfigProvider.currentConfig.getOperationHash(OperationRegistry.OP_BROWSE)
-
-    val TOP_RANKED_PERSISTED_QUERY_HASH: String
-        get() = MkissaConfigProvider.currentConfig.getOperationHash(OperationRegistry.OP_TOP_RANKED)
-
-    val DETAIL_PERSISTED_QUERY_HASH: String
-        get() = MkissaConfigProvider.currentConfig.getOperationHash(OperationRegistry.OP_DETAIL)
-
-    val EPISODE_PERSISTED_QUERY_HASH: String
-        get() = MkissaConfigProvider.currentConfig.getOperationHash(OperationRegistry.OP_EPISODE)
-
-    private val httpClient = OkHttpClient.Builder()
+class DefaultAnimeRepository(
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
+) : AnimeRepository {
+
+    private object InternalConstants {
+        const val TAG = "DefaultAnimeRepository"
+        const val PREFS_NAME = "akira_content_prefs"
+        const val PREF_ALLOW_ADULT = "pref_allow_adult"
+        const val PREF_DENY_ECCHI = "pref_deny_ecchi"
+        const val PREF_ALLOW_UNKNOWN = "pref_allow_unknown"
+    }
+
+    @Volatile
+    private var preferencesLoaded: Boolean = false
+
+    override var allowAdult: Boolean = false
+    override var denyEcchi: Boolean = false
+    override var allowUnknown: Boolean = false
 
     private val pageCache = ConcurrentHashMap<String, AnimePageResult>()
     private val detailCache = ConcurrentHashMap<String, AnimeDetail>()
     @Volatile
     private var topRankedCache: List<AnimeShow>? = null
 
-    fun clearCache() {
+    private val baseUrl: String
+        get() = MkissaConfigProvider.currentEndpoints.apiBaseUrl
+
+    override fun loadContentPreferences(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(InternalConstants.PREFS_NAME, Context.MODE_PRIVATE)
+        allowAdult = prefs.getBoolean(InternalConstants.PREF_ALLOW_ADULT, false)
+        denyEcchi = prefs.getBoolean(InternalConstants.PREF_DENY_ECCHI, false)
+        allowUnknown = prefs.getBoolean(InternalConstants.PREF_ALLOW_UNKNOWN, false)
+        preferencesLoaded = true
+    }
+
+    override fun updateContentPreferences(
+        context: Context,
+        newAllowAdult: Boolean?,
+        newDenyEcchi: Boolean?,
+        newAllowUnknown: Boolean?
+    ) {
+        val prefs = context.applicationContext.getSharedPreferences(InternalConstants.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit {
+            newAllowAdult?.let {
+                allowAdult = it
+                putBoolean(InternalConstants.PREF_ALLOW_ADULT, it)
+            }
+            newDenyEcchi?.let {
+                denyEcchi = it
+                putBoolean(InternalConstants.PREF_DENY_ECCHI, it)
+            }
+            newAllowUnknown?.let {
+                allowUnknown = it
+                putBoolean(InternalConstants.PREF_ALLOW_UNKNOWN, it)
+            }
+        }
+        clearCache()
+    }
+
+    override fun clearCache() {
         pageCache.clear()
         detailCache.clear()
         topRankedCache = null
@@ -119,21 +242,25 @@ object AnimeRepository {
         )
     }
 
-    suspend fun fetchAnimeList(
-        page: Int = 1,
-        limit: Int = 26,
-        translationType: String = "sub",
-        listProfile: String = "browse",
-        searchQuery: String? = null,
-        sortBy: String? = null,
-        countryOrigin: String? = null,
-        season: String? = null,
-        seasonYear: Int? = null,
-        context: Context? = null
+    override suspend fun fetchAnimeList(
+        page: Int,
+        limit: Int,
+        translationType: String,
+        listProfile: String,
+        searchQuery: String?,
+        sortBy: String?,
+        countryOrigin: String?,
+        season: String?,
+        seasonYear: Int?,
+        context: Context?
     ): AnimePageResult = withContext(Dispatchers.IO) {
         val config = if (context != null) MkissaConfigProvider.getConfig(context) else MkissaConfigProvider.currentConfig
         val buildId = config.buildId
         val queryHash = config.getOperationHash(OperationRegistry.OP_BROWSE)
+
+        if (!preferencesLoaded && context != null) {
+            loadContentPreferences(context)
+        }
 
         val searchObj = JSONObject().apply {
             put("listProfile", listProfile)
@@ -169,33 +296,28 @@ object AnimeRepository {
             })
         }
 
-        val encodedVars = Uri.encode(variablesObj.toString())
-        val encodedExts = Uri.encode(extensionsObj.toString())
-        val fullUrl = "$BASE_URL?variables=$encodedVars&extensions=$encodedExts"
-
+        val cacheKey = "$baseUrl?variables=${Uri.encode(variablesObj.toString())}&extensions=${Uri.encode(extensionsObj.toString())}"
         if (q.isNullOrEmpty()) {
-            pageCache[fullUrl]?.let { return@withContext it }
+            pageCache[cacheKey]?.let { return@withContext it }
         }
 
-        val reqBuilder = Request.Builder().url(fullUrl)
-        getHeaders(buildId).forEach { (k, v) -> reqBuilder.header(k, v) }
-
-        httpClient.newCall(reqBuilder.build()).execute().use { resp ->
-            val body = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw IllegalStateException("Server error: HTTP ${resp.code}")
-
-            val result = parseAnimeResponse(body, page)
-            if (q.isNullOrEmpty()) {
-                pageCache[fullUrl] = result
-            }
-            result
-        }
+        val body = MkissaGraphQlTransport.executePersistedQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            variables = variablesObj,
+            extensions = extensionsObj,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+        val result = parseAnimeResponse(body, page)
+        if (q.isNullOrEmpty()) pageCache[cacheKey] = result
+        result
     }
 
-    suspend fun fetchTopRankedAnime(
-        dateRange: Int = 1,
-        size: Int = 15,
-        context: Context? = null
+    override suspend fun fetchTopRankedAnime(
+        dateRange: Int,
+        size: Int,
+        context: Context?
     ): List<AnimeShow> = withContext(Dispatchers.IO) {
         topRankedCache?.takeIf { it.isNotEmpty() }?.let { return@withContext it }
 
@@ -219,39 +341,330 @@ object AnimeRepository {
             })
         }
 
-        val encodedVars = Uri.encode(variablesObj.toString())
-        val encodedExts = Uri.encode(extensionsObj.toString())
-        val fullUrl = "$BASE_URL?variables=$encodedVars&extensions=$encodedExts"
+        val body = MkissaGraphQlTransport.executePersistedQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            variables = variablesObj,
+            extensions = extensionsObj,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+        val json = JSONObject(body)
+        throwIfGraphQlErrors(json, "Failed to load top-ranked anime")
+        val data = json.optJSONObject("data")
+        val top10 = data?.optJSONObject("top10")
+        val edges = top10?.optJSONArray("edges")
 
-        val reqBuilder = Request.Builder().url(fullUrl)
-        getHeaders(buildId).forEach { (k, v) -> reqBuilder.header(k, v) }
+        val list = mutableListOf<AnimeShow>()
+        if (edges != null) {
+            for (i in 0 until edges.length()) {
+                val item = edges.optJSONObject(i)
+                if (item != null) list.add(AnimeShow.fromRankedCard(item))
+            }
+        }
+        topRankedCache = list
+        list
+    }
 
-        httpClient.newCall(reqBuilder.build()).execute().use { resp ->
-            val body = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw IllegalStateException("Server error: HTTP ${resp.code}")
+    override suspend fun fetchShowsByTag(
+        tagSlugOrName: String,
+        format: String,
+        page: Int,
+        limit: Int,
+        ranked: Boolean,
+        context: Context?
+    ): AnimePageResult = withContext(Dispatchers.IO) {
+        val config = if (context != null) MkissaConfigProvider.getConfig(context) else MkissaConfigProvider.currentConfig
+        val buildId = config.buildId
+        if (!preferencesLoaded && context != null) {
+            loadContentPreferences(context)
+        }
 
-            val json = JSONObject(body)
-            val data = json.optJSONObject("data")
-            val top10 = data?.optJSONObject("top10")
-            val edges = top10?.optJSONArray("edges")
+        val slug = tagSlugOrName.trim().replace(Regex("[^a-zA-Z0-9]+"), "-").lowercase()
+        val searchObj = JSONObject().apply {
+            put("slug", slug)
+            put("format", format)
+            put("page", page)
+            put("limit", limit)
+            put("allowAdult", allowAdult)
+            put("allowUnknown", allowUnknown)
+            if (!ranked) put("ranked", false)
+        }
 
-            val list = mutableListOf<AnimeShow>()
-            if (edges != null) {
-                for (i in 0 until edges.length()) {
-                    val item = edges.optJSONObject(i)
-                    if (item != null) {
-                        list.add(AnimeShow.fromRankedCard(item))
-                    }
+        val variables = JSONObject().apply {
+            put("search", searchObj)
+        }
+
+        val query = """
+            query(${'$'}search: ListForTagInput!) {
+              queryListForTag(search: ${'$'}search) {
+                pageInfo {
+                  total
+                  hasNextPage
+                }
+                edges {
+                  _id
+                  name
+                  englishName
+                  nativeName
+                  thumbnail
+                  tbObj {
+                    u
+                    sm
+                    md
+                    ts
+                  }
+                  airedStart
+                  isAdult
+                  adultAssetsHidden
+                  availableChapters
+                  availableEpisodes
+                }
+              }
+            }
+        """.trimIndent()
+
+        val raw = MkissaGraphQlTransport.executeRawQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            query = query,
+            variables = variables,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+
+        val json = JSONObject(raw)
+        throwIfGraphQlErrors(json, "Failed to load shows for tag")
+        val data = json.optJSONObject("data")
+        val listForTag = data?.optJSONObject("queryListForTag")
+        val pageInfo = listForTag?.optJSONObject("pageInfo")
+        val total = pageInfo?.optInt("total", 0) ?: 0
+
+        val edges = listForTag?.optJSONArray("edges")
+        val list = mutableListOf<AnimeShow>()
+        if (edges != null) {
+            for (i in 0 until edges.length()) {
+                val item = edges.optJSONObject(i)
+                if (item != null) list.add(AnimeShow.fromJson(item))
+            }
+        }
+        AnimePageResult(shows = list, total = total, page = page)
+    }
+
+    override suspend fun fetchTags(
+        page: Int,
+        limit: Int,
+        searchQuery: String?,
+        context: Context?
+    ): List<com.ghostreborn.akira.features.home.models.TagItem> = withContext(Dispatchers.IO) {
+        val config = if (context != null) MkissaConfigProvider.getConfig(context) else MkissaConfigProvider.currentConfig
+        val buildId = config.buildId
+
+        val variables = JSONObject().apply {
+            put("page", page)
+            put("limit", limit)
+            if (!searchQuery.isNullOrBlank()) {
+                put("search", JSONObject().apply {
+                    put("query", searchQuery.trim())
+                })
+            }
+        }
+
+        val query = """
+            query(${'$'}page: Int, ${'$'}limit: Int, ${'$'}search: TagSearchInput) {
+              queryTags(page: ${'$'}page, limit: ${'$'}limit, search: ${'$'}search) {
+                pageInfo {
+                  total
+                }
+                edges {
+                  tagType
+                  name
+                  animeCount
+                  mangaCount
+                  gameCount
+                  otherCount
+                  slug
+                  views
+                }
+              }
+            }
+        """.trimIndent()
+
+        val raw = MkissaGraphQlTransport.executeRawQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            query = query,
+            variables = variables,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+
+        val json = JSONObject(raw)
+        throwIfGraphQlErrors(json, "Failed to load tags")
+        val data = json.optJSONObject("data")
+        val tagsObj = data?.optJSONObject("queryTags")
+        val edges = tagsObj?.optJSONArray("edges")
+
+        val list = mutableListOf<com.ghostreborn.akira.features.home.models.TagItem>()
+        if (edges != null) {
+            for (i in 0 until edges.length()) {
+                val item = edges.optJSONObject(i)
+                if (item != null) {
+                    list.add(com.ghostreborn.akira.features.home.models.TagItem.fromJson(item))
                 }
             }
-            topRankedCache = list
-            list
+        }
+        list
+    }
+
+    override suspend fun fetchRandomRecommendation(
+        format: String,
+        context: Context?
+    ): AnimeShow? = withContext(Dispatchers.IO) {
+        val config = if (context != null) MkissaConfigProvider.getConfig(context) else MkissaConfigProvider.currentConfig
+        val buildId = config.buildId
+        if (!preferencesLoaded && context != null) {
+            loadContentPreferences(context)
+        }
+
+        val variables = JSONObject().apply {
+            put("format", format)
+            put("allowAdult", allowAdult)
+            put("denyEcchi", denyEcchi)
+        }
+
+        val query = """
+            query(${'$'}format: String!, ${'$'}allowAdult: Boolean, ${'$'}denyEcchi: Boolean) {
+              queryRandomRecommendation(format: ${'$'}format, allowAdult: ${'$'}allowAdult, denyEcchi: ${'$'}denyEcchi) {
+                _id
+                name
+                englishName
+                nativeName
+                thumbnail
+                tbObj {
+                  u
+                  sm
+                  md
+                  ts
+                }
+                airedStart
+                isAdult
+                adultAssetsHidden
+                availableChapters
+                availableEpisodes
+              }
+            }
+        """.trimIndent()
+
+        val raw = MkissaGraphQlTransport.executeRawQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            query = query,
+            variables = variables,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+
+        val json = JSONObject(raw)
+        throwIfGraphQlErrors(json, "Failed to load random recommendation")
+        val data = json.optJSONObject("data")
+        val recArray = data?.optJSONArray("queryRandomRecommendation")
+        if (recArray != null && recArray.length() > 0) {
+            val randomIndex = (0 until recArray.length()).random()
+            val chosenObj = recArray.optJSONObject(randomIndex)
+            if (chosenObj != null) AnimeShow.fromJson(chosenObj) else null
+        } else {
+            val recObj = data?.optJSONObject("queryRandomRecommendation")
+            if (recObj != null) AnimeShow.fromJson(recObj) else null
         }
     }
 
-    suspend fun fetchAnimeDetail(
+    override suspend fun fetchPopularMedia(
+        type: String,
+        size: Int,
+        dateRange: Int,
+        page: Int,
+        context: Context?
+    ): List<AnimeShow> = withContext(Dispatchers.IO) {
+        val config = if (context != null) MkissaConfigProvider.getConfig(context) else MkissaConfigProvider.currentConfig
+        val buildId = config.buildId
+        if (!preferencesLoaded && context != null) {
+            loadContentPreferences(context)
+        }
+
+        val variables = JSONObject().apply {
+            put("type", type)
+            put("size", size)
+            put("dateRange", dateRange)
+            put("page", page)
+            put("allowAdult", allowAdult)
+            put("allowUnknown", allowUnknown)
+        }
+
+        val query = """
+            query(${'$'}type: VaildPopularTypeEnumType!, ${'$'}size: Int!, ${'$'}dateRange: Int, ${'$'}page: Int, ${'$'}allowAdult: Boolean, ${'$'}allowUnknown: Boolean) {
+              queryPopular(type: ${'$'}type, size: ${'$'}size, dateRange: ${'$'}dateRange, page: ${'$'}page, allowAdult: ${'$'}allowAdult, allowUnknown: ${'$'}allowUnknown) {
+                total
+                recommendations {
+                  anyCard {
+                    _id
+                    name
+                    englishName
+                    nativeName
+                    thumbnail
+                    tbObj {
+                      u
+                      sm
+                      md
+                      ts
+                    }
+                    airedStart
+                    isAdult
+                    adultAssetsHidden
+                    availableChapters
+                    availableEpisodes
+                    score
+                  }
+                  pageStatus {
+                    _id
+                    views
+                    showId
+                    rangeViews
+                    isManga
+                    commentCount
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        val raw = MkissaGraphQlTransport.executeRawQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            query = query,
+            variables = variables,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+
+        val json = JSONObject(raw)
+        throwIfGraphQlErrors(json, "Failed to load popular media")
+        val data = json.optJSONObject("data")
+        val popObj = data?.optJSONObject("queryPopular")
+        val recs = popObj?.optJSONArray("recommendations")
+        val list = mutableListOf<AnimeShow>()
+        if (recs != null) {
+            for (i in 0 until recs.length()) {
+                val item = recs.optJSONObject(i)
+                if (item != null) list.add(AnimeShow.fromRankedCard(item))
+            }
+        }
+        list
+    }
+
+    override suspend fun fetchAnimeDetail(
         animeId: String,
-        context: Context? = null
+        context: Context?
     ): AnimeDetail = withContext(Dispatchers.IO) {
         detailCache[animeId]?.let { return@withContext it }
 
@@ -277,33 +690,38 @@ object AnimeRepository {
             })
         }
 
-        val encodedVars = Uri.encode(variablesObj.toString())
-        val encodedExts = Uri.encode(extensionsObj.toString())
-        val fullUrl = "$BASE_URL?variables=$encodedVars&extensions=$encodedExts"
+        val body = MkissaGraphQlTransport.executePersistedQuery(
+            client = httpClient,
+            apiBaseUrl = config.endpoints.apiBaseUrl,
+            variables = variablesObj,
+            extensions = extensionsObj,
+            headers = getHeaders(buildId),
+            authToken = AuthRepository.getValidAccessTokenOrNull(context)
+        )
+        val json = JSONObject(body)
+        throwIfGraphQlErrors(json, "Failed to load anime details")
+        val data = json.optJSONObject("data")
+        val showMap = data?.optJSONObject("show") ?: data?.optJSONObject("anime")
 
-        val reqBuilder = Request.Builder().url(fullUrl)
-        getHeaders(buildId).forEach { (k, v) -> reqBuilder.header(k, v) }
-
-        httpClient.newCall(reqBuilder.build()).execute().use { resp ->
-            val body = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) throw IllegalStateException("Server error: HTTP ${resp.code}")
-
-            val json = JSONObject(body)
-            if (json.has("errors")) {
-                val errors = json.optJSONArray("errors")
-                val first = errors?.optJSONObject(0)
-                val msg = first?.optString("message") ?: "Failed to load anime details"
-                throw IllegalStateException(msg)
-            }
-
-            val data = json.optJSONObject("data")
-            val showMap = data?.optJSONObject("show") ?: data?.optJSONObject("anime")
-                ?: throw IllegalStateException("Anime details not found.")
-
-            val detail = AnimeDetail.fromJson(showMap)
-            detailCache[animeId] = detail
-            detail
+        if (showMap == null) {
+            throw IllegalStateException("Anime details not found.")
         }
+
+        val detail = AnimeDetail.fromJson(showMap)
+        detailCache[animeId] = detail
+        detail
+    }
+
+    override fun getCachedAnimeDetail(animeId: String): AnimeDetail? {
+        return detailCache[animeId]
+    }
+
+    private fun throwIfGraphQlErrors(json: JSONObject, fallbackMessage: String) {
+        val errors = json.optJSONArray("errors") ?: return
+        if (errors.length() == 0) return
+        val first = errors.optJSONObject(0)
+        val message = first?.optString("message")?.takeIf { it.isNotBlank() } ?: fallbackMessage
+        throw IllegalStateException(message)
     }
 
     private fun parseAnimeResponse(rawResponse: String, page: Int): AnimePageResult {
@@ -332,43 +750,35 @@ object AnimeRepository {
         return AnimePageResult(shows = list, total = total, page = page)
     }
 
-    fun isCaptchaError(statusCode: Int, responseBody: String): Boolean {
-        val upper = responseBody.uppercase()
-        if (upper.contains("ERROR_NEED_CAPTCHA") || upper.contains("NEED_CAPTCHA") ||
-            upper.contains("CAPTCHA_REQUIRED") || upper.contains("CAPTCHA_INVALID")
-        ) {
-            return true
-        }
-        if ((statusCode == 403 || statusCode == 429) && upper.contains("CAPTCHA")) {
-            return true
-        }
-        return false
-    }
-
-    suspend fun fetchEpisodeStreams(
+    override suspend fun fetchEpisodeStreams(
         context: Context,
         showId: String,
         episodeString: String,
-        translationType: String = "sub",
-        authToken: String? = null,
-        captchaToken: String? = null
+        translationType: String,
+        authToken: String?
     ): EpisodeFetchResult = withContext(Dispatchers.IO) {
         require(showId.isNotBlank()) { "Show ID cannot be empty." }
         require(episodeString.isNotBlank()) { "Episode string cannot be empty." }
 
-        // Initialize/resolve configuration first
         var config = MkissaConfigProvider.getConfig(context)
-        val queryHash = config.getOperationHash(OperationRegistry.OP_EPISODE)
         val effectiveLane = OperationRegistry.resolveLaneForQuery(OperationRegistry.OP_EPISODE)
             ?: throw IllegalStateException("Unsupported or unknown content lane for episode operation")
 
-        fun executeEpisodeQuery(
+        val requestAuthToken = try {
+            AuthRepository.getValidAccessTokenOrNull(context)
+        } catch (e: Exception) {
+            Log.w(InternalConstants.TAG, "Could not refresh the saved session: ${e.message}")
+            null
+        } ?: if (!TokenManager.isAccessTokenExpired(context)) authToken else null
+
+        suspend fun executeEpisodeQuery(
             bootstrap: CryptoBootstrap,
-            cfg: com.ghostreborn.akira.core.config.MkissaClientConfig,
+            cfg: MkissaClientConfig,
             explicitAaReq: String? = null
         ): String {
+            val activeQueryHash = cfg.getOperationHash(OperationRegistry.OP_EPISODE)
             val effectiveAaReq = explicitAaReq ?: Decryptor.generateAaReq(
-                queryHash = queryHash,
+                queryHash = activeQueryHash,
                 bootstrap = bootstrap,
                 buildId = cfg.buildId,
                 config = cfg
@@ -383,48 +793,23 @@ object AnimeRepository {
             val extensionsObj = JSONObject().apply {
                 put("persistedQuery", JSONObject().apply {
                     put("version", 1)
-                    put("sha256Hash", queryHash)
+                    put("sha256Hash", activeQueryHash)
                 })
                 put("k", effectiveLane)
                 put("aaReq", effectiveAaReq)
-                if (!captchaToken.isNullOrBlank()) {
-                    put("captchaToken", captchaToken)
-                }
             }
 
-            val fullUrl = "$BASE_URL?variables=${Uri.encode(variablesObj.toString())}&extensions=${Uri.encode(extensionsObj.toString())}"
-            val reqBuilder = Request.Builder().url(fullUrl)
-            getHeaders(cfg.buildId).forEach { (k, v) -> reqBuilder.header(k, v) }
-
-            if (!authToken.isNullOrBlank()) {
-                val authHeader = if (authToken.startsWith("Bearer ", ignoreCase = true)) authToken else "Bearer $authToken"
-                reqBuilder.header("authorization", authHeader)
-            }
-
-            if (!captchaToken.isNullOrBlank()) {
-                reqBuilder.header("x-captcha-token", captchaToken)
-                reqBuilder.header("g-recaptcha-response", captchaToken)
-            }
-
-            httpClient.newCall(reqBuilder.build()).execute().use { response ->
-                val body = response.body?.string() ?: ""
-                if (!response.isSuccessful) {
-                    if (isCaptchaError(response.code, body)) {
-                        throw CaptchaRequiredException(
-                            statusCode = response.code,
-                            errorCode = "ERROR_NEED_CAPTCHA",
-                            rawResponse = body,
-                            message = "API error HTTP ${response.code}: $body"
-                        )
-                    }
-                    throw IllegalStateException("API error HTTP ${response.code}: $body")
-                }
-                return body
-            }
+            return MkissaGraphQlTransport.executePersistedQuery(
+                client = httpClient,
+                apiBaseUrl = cfg.endpoints.apiBaseUrl,
+                variables = variablesObj,
+                extensions = extensionsObj,
+                headers = getHeaders(cfg.buildId),
+                authToken = requestAuthToken
+            )
         }
 
-        // Step 1: Obtain bootstrap for lane and resolved buildId
-        var bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = authToken, captchaToken = captchaToken, config = config)
+        var bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = requestAuthToken, config = config)
         var responseStr = executeEpisodeQuery(bootstrap, config)
 
         fun checkBuildIdError(resp: String): Boolean {
@@ -443,15 +828,14 @@ object AnimeRepository {
                     u.contains("INVALID_BOOT_TOKEN")
         }
 
-        // Recovery: Unknown build ID or rejected boot token (max 1 retry)
         if (checkBuildIdError(responseStr) || responseStr.contains("invalid_boot_token")) {
-            Log.d(TAG, "Unknown build id or invalid boot token encountered. Invalidation retry...")
+            Log.d(InternalConstants.TAG, "Unknown build id or invalid boot token encountered. Invalidation retry...")
             MkissaConfigProvider.invalidate(context)
             Decryptor.invalidateBootstrapCacheForLane(effectiveLane)
 
             try {
                 config = MkissaConfigProvider.getConfig(context, forceRefresh = true)
-                bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = authToken, captchaToken = captchaToken, forceRefresh = true, config = config)
+                bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = requestAuthToken, forceRefresh = true, config = config)
                 val freshAaReq = Decryptor.generateAaReq(
                     queryHash = config.getOperationHash(OperationRegistry.OP_EPISODE),
                     bootstrap = bootstrap,
@@ -460,7 +844,7 @@ object AnimeRepository {
                 )
                 responseStr = executeEpisodeQuery(bootstrap, config, freshAaReq)
             } catch (e: Exception) {
-                Log.e(TAG, "Build ID / boot recovery retry failed: $e")
+                Log.e(InternalConstants.TAG, "Build ID / boot recovery retry failed: $e")
             }
 
             if (checkBuildIdError(responseStr)) {
@@ -468,13 +852,12 @@ object AnimeRepository {
             }
         }
 
-        // Recovery: Crypto expired / stale (max 1 retry)
         if (checkCryptoError(responseStr)) {
-            Log.d(TAG, "AA_CRYPTO error. Retrying with fresh bootstrap...")
+            Log.d(InternalConstants.TAG, "AA_CRYPTO error. Retrying with fresh bootstrap...")
             Decryptor.invalidateBootstrapCacheForLane(effectiveLane)
 
             try {
-                bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = authToken, captchaToken = captchaToken, forceRefresh = true, config = config)
+                bootstrap = Decryptor.getBootstrap(context, lane = effectiveLane, buildId = config.buildId, authToken = requestAuthToken, forceRefresh = true, config = config)
                 val freshAaReq = Decryptor.generateAaReq(
                     queryHash = config.getOperationHash(OperationRegistry.OP_EPISODE),
                     bootstrap = bootstrap,
@@ -483,31 +866,15 @@ object AnimeRepository {
                 )
                 responseStr = executeEpisodeQuery(bootstrap, config, freshAaReq)
             } catch (e: Exception) {
-                Log.e(TAG, "Crypto retry failed: $e")
+                Log.e(InternalConstants.TAG, "Crypto retry failed: $e")
             }
         }
 
-        // Parse and Decrypt
-        Log.d(TAG, "fetchEpisodeStreams responseStr: $responseStr")
         val root = JSONObject(responseStr)
         if (root.has("errors")) {
             val errors = root.optJSONArray("errors")
             val first = errors?.optJSONObject(0)
-            val errMsg = first?.optString("message") ?: ""
-            val errCode = first?.optJSONObject("extensions")?.optString("code") ?: ""
-            val combined = "$errMsg $errCode".uppercase()
-
-            if (combined.contains("ERROR_NEED_CAPTCHA") || combined.contains("NEED_CAPTCHA") ||
-                combined.contains("CAPTCHA_REQUIRED") || combined.contains("CAPTCHA_INVALID")
-            ) {
-                throw CaptchaRequiredException(
-                    statusCode = 200,
-                    errorCode = if (errCode.isNotBlank()) errCode else "ERROR_NEED_CAPTCHA",
-                    rawResponse = responseStr,
-                    message = if (errMsg.isNotBlank()) errMsg else "ERROR_NEED_CAPTCHA"
-                )
-            }
-            throw IllegalStateException(if (errMsg.isNotBlank()) errMsg else "Episode query error")
+            throw IllegalStateException(first?.optString("message") ?: "Episode query error")
         }
 
         val dataObj = root.optJSONObject("data")

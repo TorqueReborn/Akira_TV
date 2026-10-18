@@ -106,7 +106,6 @@ fun AkiraTVContinueWatchingCard(
                 role = Role.Button
                 contentDescription = "Continue watching ${progress.animeTitle}, Episode ${progress.episodeNumber}, $percent% completed"
             }
-            .focusable(interactionSource = interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null

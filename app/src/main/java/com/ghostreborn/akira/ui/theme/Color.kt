@@ -1,6 +1,5 @@
 package com.ghostreborn.akira.ui.theme
 
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 val Purple80 = Color(0xFFD0BCFF)
@@ -26,10 +25,10 @@ val AkiraTextPrimary = Color(0xFF1E1B2E)
 val AkiraTextSecondary = Color(0xFF6E6B7B)
 val AkiraTextHint = Color(0xFFA39EB0)
 
-// Dark Theme Colors (Android TV standard is Dark Mode)
-val AkiraDarkBackground = Color(0xFF0C0A14)
-val AkiraDarkSurface = Color(0xFF151322)
-val AkiraDarkSurfaceVariant = Color(0xFF1E1B2E)
+// Dark Theme Colors
+val AkiraDarkBackground = Color(0xFF0F0D15)
+val AkiraDarkSurface = Color(0xFF171422)
+val AkiraDarkSurfaceVariant = Color(0xFF221E32)
 val AkiraDarkAccentBackground = Color(0xFF2B1F47)
 val AkiraDarkSurfaceBorder = Color(0xFF2E2744)
 
@@ -44,6 +43,6 @@ val AkiraLogoPink = Color(0xFFEC4899)
 val AkiraShadowColor = Color(0x1A6D28D9)
 val AkiraGlowColor = Color(0x408B5CF6)
 
-val AkiraLogoGradientBrush = Brush.linearGradient(
+val AkiraLogoGradientBrush = androidx.compose.ui.graphics.Brush.linearGradient(
     listOf(AkiraLogoBlue, AkiraLogoPurple, AkiraLogoPink)
 )

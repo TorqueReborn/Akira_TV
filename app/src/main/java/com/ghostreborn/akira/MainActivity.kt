@@ -42,18 +42,43 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        TokenManager.init(this)
+        com.ghostreborn.akira.features.home.services.AnimeRepository.loadContentPreferences(this)
         val updateManager = UpdateManager.getInstance(this)
         updateManager.checkForUpdates(isManual = false)
+
+        // Pre-warm dynamic crypto config asynchronously so login and feed loads don't lag
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                com.ghostreborn.akira.core.config.MkissaConfigProvider.getConfig(applicationContext)
+            } catch (_: Exception) {
+            }
+        }
 
         setContent {
             AkiraTheme {
                 val updateState = updateManager.uiState.collectAsState().value
+                val captchaChallenge = com.ghostreborn.akira.core.network.CaptchaChallengeManager.challenge.collectAsState().value
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AkiraTVAppNavigation(intent = intent)
+
+                    if (captchaChallenge != null) {
+                        com.ghostreborn.akira.features.auth.widgets.CloudflareVerificationDialog(
+                            onTokenExtracted = { token ->
+                                com.ghostreborn.akira.core.network.CaptchaChallengeManager.submitSolution(
+                                    token = token,
+                                    provider = com.ghostreborn.akira.core.config.MkissaConfigProvider.currentEndpoints.captchaProvider
+                                )
+                            },
+                            onDismiss = {
+                                com.ghostreborn.akira.core.network.CaptchaChallengeManager.cancelChallenge()
+                            }
+                        )
+                    }
 
                     UpdateDialog(
                         state = updateState,

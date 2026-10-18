@@ -1,5 +1,6 @@
 package com.ghostreborn.akira.features.updater.services
 
+import android.annotation.SuppressLint
 import android.content.Context
 import com.ghostreborn.akira.features.updater.models.AppRelease
 import com.ghostreborn.akira.features.updater.models.UpdateErrorType
@@ -48,6 +49,7 @@ class ApkDownloader(
      * Downloads the APK asset associated with the release.
      * Invokes [onProgress] with (bytesDownloaded, totalBytes).
      */
+    @SuppressLint("UsableSpace")
     suspend fun downloadApk(
         release: AppRelease,
         onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit

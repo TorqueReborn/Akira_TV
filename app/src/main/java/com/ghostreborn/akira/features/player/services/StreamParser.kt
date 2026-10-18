@@ -1,6 +1,7 @@
 package com.ghostreborn.akira.features.player.services
 
 import android.net.Uri
+import androidx.core.net.toUri
 import android.util.Log
 import com.ghostreborn.akira.features.player.models.StreamSource
 import org.json.JSONArray
@@ -87,7 +88,7 @@ object StreamParser {
 
     private fun checkIsDirect(url: String, itemType: String?, itemExt: String, name: String): Boolean {
         val lower = url.lowercase()
-        val uri = try { Uri.parse(url) } catch (_: Exception) { null }
+        val uri = try { url.toUri() } catch (_: Exception) { null }
         val host = uri?.host?.lowercase() ?: ""
 
         for (iframeHost in knownIframeHosts) {

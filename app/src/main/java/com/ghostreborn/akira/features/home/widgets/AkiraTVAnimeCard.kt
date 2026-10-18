@@ -97,7 +97,6 @@ fun AkiraTVAnimeCard(
                 role = androidx.compose.ui.semantics.Role.Button
                 contentDescription = "${anime.name}. ${if (anime.availableEpisodesSub > 0) "${anime.availableEpisodesSub} episodes sub" else ""}"
             }
-            .focusable(interactionSource = interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null

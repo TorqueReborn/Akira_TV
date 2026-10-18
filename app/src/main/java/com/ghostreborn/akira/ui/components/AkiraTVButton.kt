@@ -98,7 +98,6 @@ fun AkiraTVButton(
             .semantics(mergeDescendants = true) {
                 role = androidx.compose.ui.semantics.Role.Button
             }
-            .focusable(enabled = isActionable, interactionSource = interactionSource)
             .clickable(
                 enabled = isActionable,
                 interactionSource = interactionSource,

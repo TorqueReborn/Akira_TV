@@ -1,6 +1,7 @@
 package com.ghostreborn.akira.features.home.services
 
 import android.content.Context
+import androidx.core.content.edit
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
@@ -77,7 +78,7 @@ object FavoritesManager {
 
         val jsonArray = JSONArray()
         list.forEach { jsonArray.put(it.toJson()) }
-        getPrefs(context).edit().putString(KEY_FAVORITES, jsonArray.toString()).apply()
+        getPrefs(context).edit { putString(KEY_FAVORITES, jsonArray.toString()) }
         return nowFavorite
     }
 }

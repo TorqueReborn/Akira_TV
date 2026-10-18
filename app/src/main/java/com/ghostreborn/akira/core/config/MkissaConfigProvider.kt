@@ -1,6 +1,7 @@
 package com.ghostreborn.akira.core.config
 
 import android.content.Context
+import androidx.core.content.edit
 import android.util.Log
 import com.ghostreborn.akira.core.crypto.SafeBase64
 import kotlinx.coroutines.Dispatchers
@@ -29,9 +30,15 @@ data class MkissaClientConfig(
     val fragments: List<ByteArray>,
     val operationHashes: Map<String, String> = mapOf(
         OperationRegistry.OP_BROWSE to OperationRegistry.DEFAULT_BROWSE_HASH,
+        OperationRegistry.OP_MANGA_BROWSE to OperationRegistry.DEFAULT_MANGA_BROWSE_HASH,
         OperationRegistry.OP_TOP_RANKED to OperationRegistry.DEFAULT_TOP_RANKED_HASH,
         OperationRegistry.OP_DETAIL to OperationRegistry.DEFAULT_DETAIL_HASH,
-        OperationRegistry.OP_EPISODE to OperationRegistry.DEFAULT_EPISODE_HASH
+        OperationRegistry.OP_EPISODE to OperationRegistry.DEFAULT_EPISODE_HASH,
+        OperationRegistry.OP_CHAPTER_PAGES to OperationRegistry.DEFAULT_CHAPTER_PAGES_HASH,
+        OperationRegistry.OP_GUIDES_FOR_MEDIA to OperationRegistry.DEFAULT_GUIDES_FOR_MEDIA_HASH,
+        OperationRegistry.OP_GUIDE_DETAIL to OperationRegistry.DEFAULT_GUIDE_DETAIL_HASH,
+        OperationRegistry.OP_WORLD_MAPS to OperationRegistry.DEFAULT_WORLD_MAPS_HASH,
+        OperationRegistry.OP_WORLD_MAP to OperationRegistry.DEFAULT_WORLD_MAP_HASH
     ),
     val endpoints: MkissaEndpoints = MkissaEndpoints.default(),
     val fetchedAtMs: Long
@@ -43,9 +50,15 @@ data class MkissaClientConfig(
         }
         return when (operationName) {
             OperationRegistry.OP_BROWSE -> OperationRegistry.DEFAULT_BROWSE_HASH
+            OperationRegistry.OP_MANGA_BROWSE -> OperationRegistry.DEFAULT_MANGA_BROWSE_HASH
             OperationRegistry.OP_TOP_RANKED -> OperationRegistry.DEFAULT_TOP_RANKED_HASH
             OperationRegistry.OP_DETAIL -> OperationRegistry.DEFAULT_DETAIL_HASH
             OperationRegistry.OP_EPISODE -> OperationRegistry.DEFAULT_EPISODE_HASH
+            OperationRegistry.OP_CHAPTER_PAGES -> OperationRegistry.DEFAULT_CHAPTER_PAGES_HASH
+            OperationRegistry.OP_GUIDES_FOR_MEDIA -> OperationRegistry.DEFAULT_GUIDES_FOR_MEDIA_HASH
+            OperationRegistry.OP_GUIDE_DETAIL -> OperationRegistry.DEFAULT_GUIDE_DETAIL_HASH
+            OperationRegistry.OP_WORLD_MAPS -> OperationRegistry.DEFAULT_WORLD_MAPS_HASH
+            OperationRegistry.OP_WORLD_MAP -> OperationRegistry.DEFAULT_WORLD_MAP_HASH
             else -> throw IllegalArgumentException("Unknown GraphQL operation: $operationName")
         }
     }
@@ -75,9 +88,11 @@ data class MkissaClientConfig(
                 fragments = DEFAULT_FRAGMENTS,
                 operationHashes = mapOf(
                     OperationRegistry.OP_BROWSE to OperationRegistry.DEFAULT_BROWSE_HASH,
+                    OperationRegistry.OP_MANGA_BROWSE to OperationRegistry.DEFAULT_MANGA_BROWSE_HASH,
                     OperationRegistry.OP_TOP_RANKED to OperationRegistry.DEFAULT_TOP_RANKED_HASH,
                     OperationRegistry.OP_DETAIL to OperationRegistry.DEFAULT_DETAIL_HASH,
-                    OperationRegistry.OP_EPISODE to OperationRegistry.DEFAULT_EPISODE_HASH
+                    OperationRegistry.OP_EPISODE to OperationRegistry.DEFAULT_EPISODE_HASH,
+                    OperationRegistry.OP_CHAPTER_PAGES to OperationRegistry.DEFAULT_CHAPTER_PAGES_HASH
                 ),
                 endpoints = MkissaEndpoints.default(),
                 fetchedAtMs = 0L
@@ -117,9 +132,11 @@ data class MkissaClientConfig(
                 }
             }
             if (!hashes.containsKey(OperationRegistry.OP_BROWSE)) hashes[OperationRegistry.OP_BROWSE] = OperationRegistry.DEFAULT_BROWSE_HASH
+            if (!hashes.containsKey(OperationRegistry.OP_MANGA_BROWSE)) hashes[OperationRegistry.OP_MANGA_BROWSE] = OperationRegistry.DEFAULT_MANGA_BROWSE_HASH
             if (!hashes.containsKey(OperationRegistry.OP_TOP_RANKED)) hashes[OperationRegistry.OP_TOP_RANKED] = OperationRegistry.DEFAULT_TOP_RANKED_HASH
             if (!hashes.containsKey(OperationRegistry.OP_DETAIL)) hashes[OperationRegistry.OP_DETAIL] = OperationRegistry.DEFAULT_DETAIL_HASH
             if (!hashes.containsKey(OperationRegistry.OP_EPISODE)) hashes[OperationRegistry.OP_EPISODE] = OperationRegistry.DEFAULT_EPISODE_HASH
+            if (!hashes.containsKey(OperationRegistry.OP_CHAPTER_PAGES)) hashes[OperationRegistry.OP_CHAPTER_PAGES] = OperationRegistry.DEFAULT_CHAPTER_PAGES_HASH
 
             val endpointsObj = json.optJSONObject("endpoints")
             val endpoints = MkissaEndpoints.fromJson(endpointsObj)
@@ -203,10 +220,8 @@ object MkissaConfigProvider {
     const val FRONTEND_INDEX_URL = "https://mkissa.to/"
     const val CDN_BASE_URL = "https://cdn.mkissa.net"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient
+        get() = com.ghostreborn.akira.core.di.ServiceLocator.okHttpClient
 
     @Volatile
     private var memoryConfig: MkissaClientConfig? = null
@@ -226,7 +241,7 @@ object MkissaConfigProvider {
         memoryConfig = null
         withContext(Dispatchers.IO) {
             val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            prefs.edit().remove(PREF_KEY).apply()
+            prefs.edit { remove(PREF_KEY) }
         }
     }
 
@@ -274,7 +289,7 @@ object MkissaConfigProvider {
             memoryConfig = discovered
             try {
                 val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-                prefs.edit().putString(PREF_KEY, discovered.toJson().toString()).apply()
+                prefs.edit { putString(PREF_KEY, discovered.toJson().toString()) }
             } catch (e: Exception) {
                 Log.e(TAG, "Persistent cache write error: $e")
             }
@@ -518,17 +533,24 @@ object MkissaConfigProvider {
      * Parses operation query hashes from JS bundle text without breaking on unknown tokens.
      */
     fun parseHashesFromBundle(jsContent: String, outHashes: MutableMap<String, String>) {
-        val pqRegex = Regex("""persistedQuery\s*:\s*\{\s*version\s*:\s*1\s*,\s*sha256Hash\s*:\s*["']([a-f0-9]{64})["']""", RegexOption.IGNORE_CASE)
-        val matches = pqRegex.findAll(jsContent)
-        for (m in matches) {
-            val hash = m.groupValues[1].lowercase()
-            if (OperationRegistry.isValidSha256Hash(hash)) {
-                val start = (m.range.first - 400).coerceAtLeast(0)
-                val snippet = jsContent.substring(start, m.range.first)
-                val lane = OperationRegistry.resolveLaneForQuery(snippet)
-                if (lane == OperationRegistry.LANE_EPISODE) {
-                    outHashes[OperationRegistry.OP_EPISODE] = hash
-                }
+        // Keep this tolerant of minifier formatting and small changes in persistedQuery object order.
+        val pqRegex = Regex(
+            """(?:persistedQuery\s*:\s*\{[^}]{0,240}?\bsha256Hash\s*:\s*["']([a-f0-9]{64})["']|\bsha256Hash\s*:\s*["']([a-f0-9]{64})["'])""",
+            RegexOption.IGNORE_CASE
+        )
+        for (match in pqRegex.findAll(jsContent)) {
+            val hash = (match.groupValues.getOrNull(1).orEmpty().ifBlank { match.groupValues.getOrNull(2).orEmpty() }).lowercase()
+            if (!OperationRegistry.isValidSha256Hash(hash)) continue
+
+            // Query fields are often a little way before the extension object in minified bundles.
+            val start = (match.range.first - 5_000).coerceAtLeast(0)
+            val snippet = jsContent.substring(start, match.range.first)
+            val operation = OperationRegistry.resolveOperationForQuery(snippet)
+            if (operation != null) {
+                outHashes[operation] = hash
+            } else if (OperationRegistry.resolveLaneForQuery(snippet) == OperationRegistry.LANE_EPISODE) {
+                // Retain the known lane-based fallback for bundles where the root field is not close.
+                outHashes[OperationRegistry.OP_EPISODE] = hash
             }
         }
     }

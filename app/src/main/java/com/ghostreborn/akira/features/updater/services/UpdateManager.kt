@@ -1,5 +1,6 @@
 package com.ghostreborn.akira.features.updater.services
 
+import android.annotation.SuppressLint
 import android.content.Context
 import com.ghostreborn.akira.features.updater.models.AppRelease
 import com.ghostreborn.akira.features.updater.models.UpdateErrorType
@@ -36,6 +37,12 @@ class UpdateManager(
     val uiState: StateFlow<UpdateUiState> = _uiState.asStateFlow()
 
     private var currentCachedRelease: AppRelease? = null
+
+    val currentVersionCode: Long
+        get() = verifier.getInstalledVersionCode()
+
+    val currentVersionName: String
+        get() = verifier.getInstalledVersionName()
 
     init {
         // Load cached release from preferences if exists
@@ -340,6 +347,7 @@ class UpdateManager(
     }
 
     companion object {
+        @SuppressLint("StaticFieldLeak")
         @Volatile
         private var instance: UpdateManager? = null
 

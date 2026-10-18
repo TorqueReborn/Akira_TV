@@ -6,8 +6,6 @@ import android.util.Log
 import com.ghostreborn.akira.core.config.MkissaClientConfig
 import com.ghostreborn.akira.core.config.MkissaConfigProvider
 import com.ghostreborn.akira.core.config.OperationRegistry
-import com.ghostreborn.akira.features.home.services.AnimeRepository
-import com.ghostreborn.akira.features.home.services.CaptchaRequiredException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -216,7 +214,6 @@ object Decryptor {
         lane: String? = null,
         buildId: String? = null,
         authToken: String? = null,
-        captchaToken: String? = null,
         forceRefresh: Boolean = false,
         config: MkissaClientConfig? = null
     ): CryptoBootstrap = withContext(Dispatchers.IO) {
@@ -225,9 +222,7 @@ object Decryptor {
         val targetBuildId = buildId ?: initialConfig.buildId
 
         try {
-            fetchBootstrapInternal(context, targetLane, targetBuildId, authToken, captchaToken, forceRefresh, initialConfig)
-        } catch (e: CaptchaRequiredException) {
-            throw e
+            fetchBootstrapInternal(context, targetLane, targetBuildId, authToken, forceRefresh, initialConfig)
         } catch (e: Exception) {
             val msg = e.message ?: ""
             val isBootTokenError = msg.contains("invalid_boot_token", ignoreCase = true)
@@ -243,7 +238,7 @@ object Decryptor {
                 val refreshedLane = lane ?: refreshedConfig.lane
                 // Crucial: Retry must use refreshedConfig.buildId to avoid mixing an old rejected buildId with a new config
                 val refreshedBuildId = refreshedConfig.buildId
-                fetchBootstrapInternal(context, refreshedLane, refreshedBuildId, authToken, captchaToken, forceRefresh = true, effectiveConfig = refreshedConfig)
+                fetchBootstrapInternal(context, refreshedLane, refreshedBuildId, authToken, forceRefresh = true, effectiveConfig = refreshedConfig)
             } else {
                 throw e
             }
@@ -255,7 +250,6 @@ object Decryptor {
         effectiveLane: String,
         effectiveBuildId: String,
         authToken: String?,
-        captchaToken: String? = null,
         forceRefresh: Boolean,
         effectiveConfig: MkissaClientConfig
     ): CryptoBootstrap {
@@ -297,22 +291,9 @@ object Decryptor {
                     reqBuilder.header("Authorization", authHeader)
                 }
 
-                if (!captchaToken.isNullOrBlank()) {
-                    reqBuilder.header("x-captcha-token", captchaToken)
-                    reqBuilder.header("g-recaptcha-response", captchaToken)
-                }
-
                 httpClient.newCall(reqBuilder.build()).execute().use { response ->
                     val body = response.body?.string() ?: ""
                     if (!response.isSuccessful) {
-                        if (AnimeRepository.isCaptchaError(response.code, body)) {
-                            throw CaptchaRequiredException(
-                                statusCode = response.code,
-                                errorCode = "ERROR_NEED_CAPTCHA",
-                                rawResponse = body,
-                                message = "Bootstrap HTTP ${response.code}: $body"
-                            )
-                        }
                         throw IllegalStateException("Bootstrap HTTP ${response.code}: $body")
                     }
 

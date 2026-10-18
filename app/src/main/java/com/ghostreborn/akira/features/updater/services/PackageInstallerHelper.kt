@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import java.io.File
 
 sealed class InstallIntentResult {
@@ -37,7 +38,7 @@ class PackageInstallerHelper(private val context: Context) {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}")
+                "package:${context.packageName}".toUri(),
             ).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }

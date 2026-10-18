@@ -123,6 +123,8 @@ fun TVPlayerScreen(
     var controlsInteractionTrigger by remember { mutableLongStateOf(0L) }
 
     val playPauseFocusRequester = remember { FocusRequester() }
+    val timelineFocusRequester = remember { FocusRequester() }
+    val serverButtonFocusRequester = remember { FocusRequester() }
     val serverFirstFocusRequester = remember { FocusRequester() }
     val episodeFirstFocusRequester = remember { FocusRequester() }
 
@@ -280,14 +282,7 @@ fun TVPlayerScreen(
         }
     }
 
-    // Auto-focus on play/pause or dialogs when shown
-    LaunchedEffect(showControls) {
-        if (showControls && !showServerDialog && !showEpisodesDrawer) {
-            try {
-                playPauseFocusRequester.requestFocus()
-            } catch (_: Exception) {}
-        }
-    }
+
 
     LaunchedEffect(showServerDialog) {
         if (showServerDialog) {
@@ -323,19 +318,55 @@ fun TVPlayerScreen(
         }
     }
 
+    var pendingFocusTarget by remember { mutableStateOf<String?>(null) }
+    val containerFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(showControls, pendingFocusTarget) {
+        if (showControls) {
+            delay(50L)
+            try {
+                when (pendingFocusTarget) {
+                    "SCRUBBER" -> timelineFocusRequester.requestFocus()
+                    "TOP_ACTION" -> serverButtonFocusRequester.requestFocus()
+                    "EPISODES" -> episodeFirstFocusRequester.requestFocus()
+                    else -> playPauseFocusRequester.requestFocus()
+                }
+            } catch (_: Exception) {}
+            pendingFocusTarget = null
+        } else {
+            delay(50L)
+            try {
+                containerFocusRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .focusRequester(containerFocusRequester)
+            .focusable()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                if (!showControls) {
+                    pendingFocusTarget = "PLAY_PAUSE"
+                    showControls = true
+                    resetControlsTimer()
+                }
+            }
             .onKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
                     val keyCode = keyEvent.nativeKeyEvent.keyCode
                     resetControlsTimer()
 
-                    // Always handle dedicated media remote keys
+                    // Dedicated hardware media remote keys
                     when (keyCode) {
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                             if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                            pendingFocusTarget = "PLAY_PAUSE"
                             showControls = true
                             true
                         }
@@ -355,18 +386,24 @@ fun TVPlayerScreen(
                             seekBy(-10000L)
                             true
                         }
-                        // Handle D-Pad when controls are hidden
+                        // Netflix D-Pad shortcut: Center / OK wakes up controls onto Play/Pause
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                             if (!showControls) {
+                                pendingFocusTarget = "PLAY_PAUSE"
                                 showControls = true
+                                resetControlsTimer()
                                 true
                             } else {
                                 false
                             }
                         }
+                        // Netflix D-Pad shortcut: Left/Right seeks 10s and lands focus DIRECTLY onto Scrubber
                         KeyEvent.KEYCODE_DPAD_LEFT -> {
                             if (!showControls) {
                                 seekBy(-10000L)
+                                pendingFocusTarget = "SCRUBBER"
+                                showControls = true
+                                resetControlsTimer()
                                 true
                             } else {
                                 false
@@ -375,23 +412,32 @@ fun TVPlayerScreen(
                         KeyEvent.KEYCODE_DPAD_RIGHT -> {
                             if (!showControls) {
                                 seekBy(10000L)
+                                pendingFocusTarget = "SCRUBBER"
+                                showControls = true
+                                resetControlsTimer()
                                 true
                             } else {
                                 false
                             }
                         }
+                        // Netflix D-Pad shortcut: Up brings up controls and lands focus on Server/Audio buttons
                         KeyEvent.KEYCODE_DPAD_UP -> {
                             if (!showControls) {
+                                pendingFocusTarget = "TOP_ACTION"
                                 showControls = true
+                                resetControlsTimer()
                                 true
                             } else {
                                 false
                             }
                         }
+                        // Netflix D-Pad shortcut: Down brings up controls and immediately opens Episode Drawer
                         KeyEvent.KEYCODE_DPAD_DOWN -> {
                             if (!showControls) {
+                                pendingFocusTarget = "EPISODES"
                                 showControls = true
                                 showEpisodesDrawer = true
+                                resetControlsTimer()
                                 true
                             } else {
                                 false
@@ -475,7 +521,6 @@ fun TVPlayerScreen(
                                     role = Role.Button
                                     contentDescription = "Back"
                                 }
-                                .focusable(interactionSource = backInteraction)
                                 .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                                 .clickable(interactionSource = backInteraction, indication = null) {
                                     onNavigateBack()
@@ -520,7 +565,6 @@ fun TVPlayerScreen(
                                         role = Role.Button
                                         contentDescription = "View Episodes List"
                                     }
-                                    .focusable(interactionSource = epBtnInteraction)
                                     .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                                     .clickable(interactionSource = epBtnInteraction, indication = null) {
                                         showEpisodesDrawer = true
@@ -545,6 +589,7 @@ fun TVPlayerScreen(
 
                         Box(
                             modifier = Modifier
+                                .focusRequester(serverButtonFocusRequester)
                                 .clip(RoundedCornerShape(10.dp))
                                 .border(if (isServerFocused) 2.dp else 0.dp, if (isServerFocused) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
                                 .then(serverBgMod)
@@ -552,7 +597,6 @@ fun TVPlayerScreen(
                                     role = Role.Button
                                     contentDescription = "Change Server, Current: $currentServerName"
                                 }
-                                .focusable(interactionSource = serverInteraction)
                                 .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                                 .clickable(interactionSource = serverInteraction, indication = null) {
                                     showServerDialog = true
@@ -591,7 +635,6 @@ fun TVPlayerScreen(
                                 role = Role.Button
                                 contentDescription = "Rewind 10 seconds"
                             }
-                            .focusable(interactionSource = rewInteraction)
                             .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                             .clickable(interactionSource = rewInteraction, indication = null) { seekBy(-10000L) },
                         contentAlignment = Alignment.Center
@@ -612,7 +655,6 @@ fun TVPlayerScreen(
                                 role = Role.Button
                                 contentDescription = if (isPlaying) "Pause video" else "Play video"
                             }
-                            .focusable(interactionSource = playInteraction)
                             .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                             .clickable(interactionSource = playInteraction, indication = null) {
                                 if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
@@ -640,7 +682,6 @@ fun TVPlayerScreen(
                                 role = Role.Button
                                 contentDescription = "Fast forward 10 seconds"
                             }
-                            .focusable(interactionSource = fwdInteraction)
                             .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                             .clickable(interactionSource = fwdInteraction, indication = null) { seekBy(10000L) },
                         contentAlignment = Alignment.Center
@@ -659,7 +700,6 @@ fun TVPlayerScreen(
                                 role = Role.Button
                                 contentDescription = "Skip 85 seconds intro"
                             }
-                            .focusable(interactionSource = skipInteraction)
                             .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                             .clickable(interactionSource = skipInteraction, indication = null) { seekBy(85000L) }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -693,6 +733,7 @@ fun TVPlayerScreen(
                                 role = Role.Button
                                 contentDescription = "Progress bar: ${formatTime(currentPositionMs)} of ${formatTime(totalDurationMs)}. Press left or right to scrub."
                             }
+                            .focusRequester(timelineFocusRequester)
                             .focusable(interactionSource = timelineInteraction)
                             .onFocusChanged { if (it.isFocused) resetControlsTimer() }
                             .onKeyEvent { keyEvent ->
@@ -797,7 +838,6 @@ fun TVPlayerScreen(
                                     role = Role.Button
                                     contentDescription = "$serverName${if (isSelected) ", Selected" else ""}"
                                 }
-                                .focusable(interactionSource = interaction)
                                 .clickable(interactionSource = interaction, indication = null) {
                                     showServerDialog = false
                                     playSource(idx, exoPlayer.currentPosition)
@@ -855,7 +895,6 @@ fun TVPlayerScreen(
                                         role = Role.Button
                                         contentDescription = "Episode $ep${if (isCurrent) ", Now Playing" else ""}"
                                     }
-                                    .focusable(interactionSource = interaction)
                                     .clickable(interactionSource = interaction, indication = null) {
                                         showEpisodesDrawer = false
                                         if (ep != episodeNumber) {

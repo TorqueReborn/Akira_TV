@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     HelloScreen()
                 }
@@ -36,11 +36,11 @@ class MainActivity : ComponentActivity() {
 fun HelloScreen() {
     Box(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "Akira",
-            fontSize = 32.sp
+            fontSize = 32.sp,
         )
     }
 }

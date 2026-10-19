@@ -1,4 +1,4 @@
 <resources>
 
-    <style name="Theme.Akira" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="Theme.Akira" parent="@android:style/Theme.Material.NoActionBar" />
 </resources>
